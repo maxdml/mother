@@ -149,13 +149,12 @@ func RunClaude(instance, projectDir, homeDir, prompt, systemPrompt, model string
 	var script strings.Builder
 	script.WriteString("#!/bin/bash\nset -e\nclaude --dangerously-skip-permissions")
 
-	if systemPrompt != "" {
-		spFile := filepath.Join(tmpDir, "system-prompt.txt")
-		if err := os.WriteFile(spFile, []byte(systemPrompt), 0600); err != nil {
-			return "", fmt.Errorf("writing system prompt: %w", err)
-		}
-		script.WriteString(fmt.Sprintf(` --append-system-prompt "$(cat '%s')"`, spFile))
+	fullSystemPrompt := BuildSystemPrompt(systemPrompt)
+	spFile := filepath.Join(tmpDir, "system-prompt.txt")
+	if err := os.WriteFile(spFile, []byte(fullSystemPrompt), 0600); err != nil {
+		return "", fmt.Errorf("writing system prompt: %w", err)
 	}
+	script.WriteString(fmt.Sprintf(` --append-system-prompt "$(cat '%s')"`, spFile))
 	if model != "" {
 		script.WriteString(" --model " + model)
 	}
