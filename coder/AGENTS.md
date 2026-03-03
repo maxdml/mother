@@ -6,10 +6,12 @@ This document describes how to understand, use, and maintain coder. It is writte
 
 ## Architecture
 
-Coder is a Go CLI with two files:
+Coder is a Go CLI:
 
-- **main.go** — CLI entry point. Parses flags, loads `.env`, resolves auth credentials, and calls into the Lima layer.
-- **lima.go** — VM lifecycle. Generates Lima YAML config from a Go template, starts/stops VMs via `limactl`, and runs Claude Code inside them.
+- **main.go** — CLI entry point. Parses flags (including `--id`), loads `.env`, resolves auth credentials, wires report writing, and calls into the Lima layer.
+- **lima.go** — VM lifecycle. Generates Lima YAML config from a Go template, starts/stops VMs via `limactl`, runs Claude Code inside them, and captures output.
+- **report.go** — Report generation. Defines the `Report` struct and `WriteReport` function. Reports are written as JSON to `coder/reports/<id>.json`.
+- **principles.go** — Default system prompt with coder's principles (simplicity, reporting, testing). Always injected into sub-agents via `BuildSystemPrompt`.
 
 The VM runs Ubuntu 24.04, installs Node.js + Claude Code on provision, and mounts:
 - The project directory (writable) — the codebase being worked on
@@ -21,14 +23,21 @@ The VM runs Ubuntu 24.04, installs Node.js + Claude Code on provision, and mount
 2. Coder resolves the project path, loads env vars from `.env` + CLI flags
 3. Stages auth credentials into a temp dir inside `~/.claude`
 4. Generates a Lima YAML config and starts the VM
-5. Runs Claude Code inside the VM via `limactl shell`
-6. On exit (or signal), force-deletes the VM
+5. Injects default principles + any user system prompt into Claude Code
+6. Runs Claude Code inside the VM via `limactl shell`, capturing stdout
+7. Writes a JSON report to `coder/reports/<id>.json`
+8. On exit (or signal), force-deletes the VM
 
 ### Modes
 
 - **Interactive** (default) — terminal attached, user talks to Claude Code directly
 - **Print** (`-p` / `--print`) — non-interactive, passes a prompt and exits with output
 - **Prompt file** (`-f` / `--prompt-file`) — reads prompt from a file, combinable with `-p`
+- **Invocation ID** (`--id`) — passed by the control plane to track invocations; used as the report filename
+
+### Principle Injection
+
+Coder always injects a default system prompt into Claude Code containing its core principles (simplicity, reporting, testing). If the user provides `--system-prompt`, it is appended after the defaults. This ensures every sub-agent operates under coder's principles regardless of how it is invoked.
 
 ## Building
 
