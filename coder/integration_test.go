@@ -18,8 +18,9 @@ func TestIntegration_VMLifecycle(t *testing.T) {
 		t.Skip("skipping integration test in short mode")
 	}
 
-	// Start a VM, verify it's running, clean it up
-	instance, err := Start("/tmp", t.TempDir(), t.TempDir(), nil)
+	// Start a VM with valid temp dirs, verify it's running, clean it up
+	projectDir := t.TempDir()
+	instance, err := Start(projectDir, t.TempDir(), t.TempDir(), nil)
 	if err != nil {
 		t.Fatalf("Start failed: %v", err)
 	}
