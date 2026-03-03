@@ -24,6 +24,7 @@ func main() {
 		promptFile   string
 		systemPrompt string
 		model        string
+		invocationID string
 	)
 
 	flag.Var(&envVars, "e", "Pass environment variable to the VM as KEY=VAL (repeatable)")
@@ -33,6 +34,7 @@ func main() {
 	flag.StringVar(&promptFile, "prompt-file", "", "Read the prompt from a file (used with print mode)")
 	flag.StringVar(&systemPrompt, "system-prompt", "", "System prompt override for Claude Code")
 	flag.StringVar(&model, "model", "", "Model override (e.g., sonnet, opus)")
+	flag.StringVar(&invocationID, "id", "", "Invocation ID (passed by control plane)")
 
 	flag.Usage = func() {
 		fmt.Fprintf(os.Stderr, "Usage: coder <project-dir> [options]\n\n")
