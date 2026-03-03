@@ -43,3 +43,7 @@ The control plane can be managed with a CLI that talks to the HTTP API.
 ## Conventions
 
 - Each component has its own `AGENTS.md` describing its purpose, architecture, and acceptance criteria
+
+## Documenting our journey
+
+Mother's development is documented in a human readable format. The human should be able to use these reports as notes for telling the tale on the internets, through blog posts and other social medias.
