@@ -11,7 +11,7 @@ Mother is composed of:
 - **Clients** — interfaces that let the operator interact with Mother
 
 ```
-Clients → Control Plane → Services
+Clients → Control Plane → Services → Clients
 ```
 
 ## Control Plane
