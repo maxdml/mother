@@ -141,8 +141,32 @@ func main() {
 	setupCleanup(instance)
 	defer Cleanup(instance)
 
-	if err := RunClaude(instance, projectDir, homeDir, prompt, systemPrompt, model); err != nil {
-		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+	output, runErr := RunClaude(instance, projectDir, homeDir, prompt, systemPrompt, model)
+
+	// Write report
+	reportsDir := filepath.Join(projectDir, "reports")
+	if ex, exErr := os.Executable(); exErr == nil {
+		reportsDir = filepath.Join(filepath.Dir(ex), "reports")
+	}
+
+	status := "success"
+	if runErr != nil {
+		status = "error"
+	}
+
+	r := Report{
+		ID:      invocationID,
+		Status:  status,
+		Summary: output,
+	}
+	if reportPath, wErr := WriteReport(reportsDir, r); wErr != nil {
+		fmt.Fprintf(os.Stderr, "Warning: failed to write report: %v\n", wErr)
+	} else {
+		fmt.Fprintf(os.Stderr, "Report written to %s\n", reportPath)
+	}
+
+	if runErr != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", runErr)
 		os.Exit(1)
 	}
 }

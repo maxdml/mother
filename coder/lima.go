@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"crypto/rand"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"os/signal"
@@ -134,13 +135,13 @@ func Start(projectDir, claudeDir, homeDir string, envMap map[string]string) (str
 	return instance, nil
 }
 
-// RunClaude executes Claude Code inside the VM.
-func RunClaude(instance, projectDir, homeDir, prompt, systemPrompt, model string) error {
+// RunClaude executes Claude Code inside the VM and returns captured stdout.
+func RunClaude(instance, projectDir, homeDir, prompt, systemPrompt, model string) (string, error) {
 	// Write prompts to host temp files inside the mounted home dir so they're
 	// visible in the VM via Lima's file sharing (no SSH stdin piping needed).
 	tmpDir := filepath.Join(homeDir, ".claude", ".coder-tmp")
 	if err := os.MkdirAll(tmpDir, 0700); err != nil {
-		return fmt.Errorf("creating temp dir: %w", err)
+		return "", fmt.Errorf("creating temp dir: %w", err)
 	}
 	defer os.RemoveAll(tmpDir)
 
@@ -151,7 +152,7 @@ func RunClaude(instance, projectDir, homeDir, prompt, systemPrompt, model string
 	if systemPrompt != "" {
 		spFile := filepath.Join(tmpDir, "system-prompt.txt")
 		if err := os.WriteFile(spFile, []byte(systemPrompt), 0600); err != nil {
-			return fmt.Errorf("writing system prompt: %w", err)
+			return "", fmt.Errorf("writing system prompt: %w", err)
 		}
 		script.WriteString(fmt.Sprintf(` --append-system-prompt "$(cat '%s')"`, spFile))
 	}
@@ -161,7 +162,7 @@ func RunClaude(instance, projectDir, homeDir, prompt, systemPrompt, model string
 	if prompt != "" {
 		pFile := filepath.Join(tmpDir, "prompt.txt")
 		if err := os.WriteFile(pFile, []byte(prompt), 0600); err != nil {
-			return fmt.Errorf("writing prompt: %w", err)
+			return "", fmt.Errorf("writing prompt: %w", err)
 		}
 		script.WriteString(fmt.Sprintf(` -p "$(cat '%s')"`, pFile))
 	}
@@ -169,7 +170,7 @@ func RunClaude(instance, projectDir, homeDir, prompt, systemPrompt, model string
 
 	scriptFile := filepath.Join(tmpDir, "run.sh")
 	if err := os.WriteFile(scriptFile, []byte(script.String()), 0700); err != nil {
-		return fmt.Errorf("writing run script: %w", err)
+		return "", fmt.Errorf("writing run script: %w", err)
 	}
 
 	args := []string{"shell", "--workdir", projectDir, instance, "bash", scriptFile}
@@ -178,9 +179,13 @@ func RunClaude(instance, projectDir, homeDir, prompt, systemPrompt, model string
 	if prompt == "" {
 		cmd.Stdin = os.Stdin // interactive mode needs terminal input
 	}
-	cmd.Stdout = os.Stdout
+
+	var output bytes.Buffer
+	cmd.Stdout = io.MultiWriter(os.Stdout, &output)
 	cmd.Stderr = os.Stderr
-	return cmd.Run()
+
+	err := cmd.Run()
+	return output.String(), err
 }
 
 // Cleanup force-deletes the Lima VM instance.
