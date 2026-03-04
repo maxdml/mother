@@ -19,6 +19,13 @@ func TestDefaultSystemPrompt_ContainsSimplicity(t *testing.T) {
 	}
 }
 
+func TestDefaultSystemPrompt_ContainsReproducibility(t *testing.T) {
+	p := DefaultSystemPrompt()
+	if !strings.Contains(p, "clean checkout") {
+		t.Fatal("default prompt should mention clean checkout reproducibility")
+	}
+}
+
 func TestBuildSystemPrompt_DefaultOnly(t *testing.T) {
 	result := BuildSystemPrompt("")
 	if result != DefaultSystemPrompt() {

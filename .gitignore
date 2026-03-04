@@ -5,6 +5,7 @@
 *.so
 *.dylib
 coder/coder
+control-plane/control-plane
 
 # Environment files
 .env
