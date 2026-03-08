@@ -57,7 +57,7 @@ provision:
       apt-get update
       apt-get install -y tmux
       curl -fsSL https://claude.ai/install.sh | bash
-      find /root/.claude/bin /root/.local/bin -name claude -type f 2>/dev/null | head -1 | xargs -I{} cp {} /usr/local/bin/claude
+      cp /root/.local/bin/claude /usr/local/bin/claude
       chmod +x /usr/local/bin/claude
 {{- end}}
 {{- if .SecretsFile}}

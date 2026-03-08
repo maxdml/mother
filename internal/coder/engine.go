@@ -163,7 +163,8 @@ func (e *Engine) runClaude(ctx context.Context, v *vm.VM, projectDir, homeDir, p
 	claudeCmd := buildClaudeCommand(spFile, promptFile, model)
 
 	// Build tmux script
-	outputLog := filepath.Join(tmpDir, "output.log")
+	// Use a VM-local path for output since the .claude mount is read-only.
+	outputLog := "/tmp/coder-output.log"
 	var script strings.Builder
 	script.WriteString("#!/bin/bash\nset -e\n")
 	script.WriteString(fmt.Sprintf(

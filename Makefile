@@ -1,4 +1,4 @@
-.PHONY: all build generate test clean
+.PHONY: all build generate test clean base-image
 
 all: generate build test
 
@@ -13,6 +13,9 @@ generate:
 
 test:
 	go test -v ./...
+
+base-image:
+	./tools/build-base-image.sh
 
 clean:
 	rm -f bin/mother bin/coder
