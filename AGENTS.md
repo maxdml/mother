@@ -4,46 +4,92 @@ Mother is a system trusted by a human operator to manage their affairs. It recei
 
 ## System Architecture
 
-Mother is composed of:
+Mother is a single Go monorepo (`github.com/maxdml/mother`) containing:
 
-- **Control plane** — a central API server that receives requests and dispatches them to services
-- **Services** — independent components that perform specific tasks (coding, and more over time)
+- **Control plane** (`cmd/mother/`) — HTTP server that receives requests and dispatches them to services
+- **Services** (`internal/`) — shared libraries that perform specific tasks
+- **CLI tools** (`cmd/coder/`) — command-line interfaces for direct service access
+- **API** (`api/`) — OpenAPI spec, generated code, and HTTP handlers
 - **Clients** — interfaces that let the operator interact with Mother
 
 ```
-Clients → Control Plane → Services → Clients
+Clients → API Gateway (cmd/mother) → Services (internal/) → VM sandbox
+                                   ↑
+CLI (cmd/coder) ─────────────────────┘
 ```
 
-## Control Plane
+## Project Layout
 
-A long-lived HTTP server that exposes Mother's APIs. Some APIs are direct passthroughs to services. Others use AI to interpret natural language input and route to the appropriate service.
+```
+mother/
+├── cmd/
+│   ├── mother/     # Control plane server binary
+│   └── coder/      # Coder CLI binary
+├── api/            # OpenAPI spec, generated code, HTTP handlers
+├── internal/
+│   ├── vm/         # Lima VM lifecycle management
+│   ├── coder/      # Coder engine, principles, reports
+│   └── workflow/   # DBOS durable workflows, job manager
+├── go.mod          # module github.com/maxdml/mother
+├── Makefile        # Build, test, generate
+└── docker-compose.yaml  # PostgreSQL for DBOS
+```
 
-Located at `/Users/mother/mother/control-plane`. See its `AGENTS.md` for architecture, API spec, and implementation details.
+## Building
+
+```bash
+make all        # generate + build + test
+make build      # builds bin/mother and bin/coder
+make generate   # regenerates API code from OpenAPI spec
+make test       # runs all tests with race detector
+```
+
+Prerequisites: Go 1.26+, Lima (`limactl`), PostgreSQL (via docker-compose).
+
+## Running
+
+### Control Plane
+
+```bash
+docker-compose up -d   # Start PostgreSQL
+DATABASE_URL="postgres://mother:mother@localhost:5432/control_plane" ./bin/mother
+```
+
+Listens on `:8080`. See `api/openapi.yaml` for the full API spec.
+
+### Coder CLI
+
+```bash
+./bin/coder <project-dir> -p "implement the feature"
+```
+
+See `coder/AGENTS.md` for CLI options and modes.
 
 ## Services
 
 ### Coder
 
-A coding service that takes a prompt and a project directory, then uses Claude Code in a sandboxed Lima VM to create or modify code. Coder is how Mother bootstraps itself — it builds and evolves all other components.
+An autonomous coding agent that runs Claude Code inside sandboxed Lima VMs. Available as both:
+- **Library** (`internal/coder/`) — imported directly by the control plane
+- **CLI** (`cmd/coder/`) — standalone command-line tool
 
-Located at `/Users/mother/mother/coder`. See its `AGENTS.md` for more information.
+The control plane calls the coder engine as a Go function (no subprocess). Both the CLI and the server share the same `internal/coder` and `internal/vm` packages.
 
 ## Clients
 
 ### CLI (current)
 
-The control plane can be managed with a CLI that talks to the HTTP API.
+The coder CLI (`cmd/coder/`) and the control plane API.
 
 ### Planned
 
-- **Graphical UI** — located at `/Users/mother/mother/mother-ui`
+- **Graphical UI** — located at `mother-ui/`
 - **Gmail** — receive and respond to requests via email
 - **Signal** — receive and respond to requests via Signal messages
 
 ## Conventions
 
-- Each component has its own `AGENTS.md` describing its purpose, architecture, and acceptance criteria
-
-## Documenting our journey
-
-Mother's development is documented in a human readable format. The human should be able to use these reports as notes for telling the tale on the internets, through blog posts and other social medias.
+- Each significant component has documentation describing its purpose and architecture
+- OpenAPI spec (`api/openapi.yaml`) is the source of truth for the HTTP API
+- All code generated from specs lives alongside the specs
+- `internal/` packages are not importable outside this module
