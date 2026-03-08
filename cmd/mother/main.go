@@ -26,8 +26,9 @@ func main() {
 	workflow.CoderEngine = coder.New()
 
 	dbosCtx, err := dbos.NewDBOSContext(context.Background(), dbos.Config{
-		DatabaseURL: databaseURL,
-		AppName:     "control-plane",
+		DatabaseURL:     databaseURL,
+		AppName:         "mother",
+		ConductorAPIKey: os.Getenv("DBOS_CONDUCTOR_API_KEY"),
 	})
 	if err != nil {
 		log.Fatalf("failed to initialize DBOS: %v", err)
