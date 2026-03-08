@@ -10,8 +10,13 @@ import (
 	"path/filepath"
 	"strings"
 	"syscall"
+	"time"
 
+	"github.com/maxdml/mother/api"
 	"github.com/maxdml/mother/internal/coder"
+	"github.com/maxdml/mother/internal/workflow"
+
+	"github.com/dbos-inc/dbos-transact-golang/dbos"
 )
 
 type envFlag []string
@@ -116,14 +121,32 @@ func run() int {
 		prompt = strings.Join(parts, "\n")
 	}
 
-	// Determine report dir
-	reportsDir := filepath.Join(projectDir, "reports")
-	if ex, exErr := os.Executable(); exErr == nil {
-		reportsDir = filepath.Join(filepath.Dir(ex), "reports")
+	// Initialize DBOS
+	databaseURL := os.Getenv("DBOS_DATABASE_URL")
+	if databaseURL == "" {
+		fmt.Fprintf(os.Stderr, "Error: DBOS_DATABASE_URL environment variable is required\n")
+		return 1
 	}
 
-	// Create engine and run
-	engine := coder.New(coder.WithReportDir(reportsDir))
+	workflow.CoderEngine = coder.New()
+
+	dbosCtx, err := dbos.NewDBOSContext(context.Background(), dbos.Config{
+		DatabaseURL:     databaseURL,
+		AppName:         "mother",
+		ConductorAPIKey: os.Getenv("DBOS_CONDUCTOR_API_KEY"),
+	})
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error initializing DBOS: %v\n", err)
+		return 1
+	}
+
+	dbos.RegisterWorkflow(dbosCtx, workflow.CoderWorkflow)
+
+	if err := dbos.Launch(dbosCtx); err != nil {
+		fmt.Fprintf(os.Stderr, "Error launching DBOS: %v\n", err)
+		return 1
+	}
+	defer dbos.Shutdown(dbosCtx, 5*time.Second)
 
 	// Set up context with signal handling
 	ctx, cancel := context.WithCancel(context.Background())
@@ -136,21 +159,81 @@ func run() int {
 		cancel()
 	}()
 
-	_, runErr := engine.Run(ctx, coder.Params{
+	// Start job via DBOS workflow
+	jobs := workflow.NewDBOSJobManager(dbosCtx)
+
+	coderParams := api.CoderParams{
 		ProjectDir:   projectDir,
 		Prompt:       prompt,
-		SystemPrompt: systemPrompt,
-		Model:        model,
-		ID:           invocationID,
-		EnvVars:      envMap,
-	})
+		SystemPrompt: strPtr(systemPrompt),
+		Model:        strPtr(model),
+		EnvVars:      mapPtr(envMap),
+	}
 
-	if runErr != nil {
-		fmt.Fprintf(os.Stderr, "Error: %v\n", runErr)
+	jobID, err := jobs.StartJob(ctx, "coder", coderParams)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error starting job: %v\n", err)
 		return 1
 	}
 
-	return 0
+	fmt.Printf("Job started: %s\n", jobID)
+
+	// Poll until completion
+	var lastStatus api.JobStatus
+	ticker := time.NewTicker(2 * time.Second)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			fmt.Fprintf(os.Stderr, "Interrupted\n")
+			return 1
+		case <-ticker.C:
+			job, err := jobs.GetJob(ctx, jobID)
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "Error polling job: %v\n", err)
+				return 1
+			}
+			if job == nil {
+				fmt.Fprintf(os.Stderr, "Error: job not found\n")
+				return 1
+			}
+
+			if job.Status != lastStatus {
+				fmt.Printf("Status: %s\n", job.Status)
+				lastStatus = job.Status
+			}
+
+			switch job.Status {
+			case api.Completed:
+				if job.Result != nil {
+					fmt.Println(*job.Result)
+				}
+				return 0
+			case api.Failed:
+				if job.Error != nil {
+					fmt.Fprintf(os.Stderr, "Error: %s\n", *job.Error)
+				} else {
+					fmt.Fprintf(os.Stderr, "Job failed\n")
+				}
+				return 1
+			}
+		}
+	}
+}
+
+func strPtr(s string) *string {
+	if s == "" {
+		return nil
+	}
+	return &s
+}
+
+func mapPtr(m map[string]string) *map[string]string {
+	if len(m) == 0 {
+		return nil
+	}
+	return &m
 }
 
 func loadDotEnv(path string) map[string]string {
