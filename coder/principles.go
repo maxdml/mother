@@ -14,7 +14,13 @@ Projects must build and test from a clean checkout with no pre-installed tools b
 Your output will be captured as a report. Write a clear summary of what you did, what succeeded, and what failed. Be concise and structured.
 
 ### Testing
-Write unit tests for every behavior change. Tests are cheap guardrails.`
+Write unit tests for every behavior change. Tests are cheap guardrails.
+
+### Tooling & Language Versions
+Always use the latest stable (LTS where applicable) version of any programming language or library. For example, use Go 1.26, Node 22 LTS, Python 3.13, etc. Do not pin to old versions without an explicit reason. When starting a new project or upgrading, check for the latest stable release.
+
+### Dependency Locking
+Always include a lock file for dependencies, regardless of the language or package manager in use. Examples: go.sum for Go, package-lock.json or yarn.lock for Node, Pipfile.lock or poetry.lock for Python, Cargo.lock for Rust, Gemfile.lock for Ruby. Lock files ensure deterministic, reproducible builds. Never .gitignore lock files.`
 
 func DefaultSystemPrompt() string {
 	return defaultPrompt
