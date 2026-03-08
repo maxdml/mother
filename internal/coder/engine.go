@@ -86,12 +86,19 @@ func (e *Engine) Run(ctx context.Context, p Params) (*Report, error) {
 		return nil, err
 	}
 
+	// Decrypt secrets for VM injection
+	secretsFile, err := vm.DecryptSecrets("coder")
+	if err != nil {
+		return nil, fmt.Errorf("decrypting secrets: %w", err)
+	}
+
 	// Create and start VM
 	v := vm.New(vm.Config{
-		ProjectDir: p.ProjectDir,
-		ClaudeDir:  claudeDir,
-		HomeDir:    homeDir,
-		EnvVars:    p.EnvVars,
+		ProjectDir:  p.ProjectDir,
+		ClaudeDir:   claudeDir,
+		HomeDir:     homeDir,
+		SecretsFile: secretsFile,
+		EnvVars:     p.EnvVars,
 	})
 	if err := v.Start(ctx); err != nil {
 		return nil, fmt.Errorf("starting VM: %w", err)

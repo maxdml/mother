@@ -209,6 +209,47 @@ make test       # go test -v -race ./...
 
 Test files live alongside the code they test, following Go convention.
 
+## Secrets Management
+
+Mother uses [SOPS](https://github.com/getsops/sops) with [age](https://github.com/FiloSottile/age) encryption to manage secrets.
+
+### Rules — ALL agents MUST follow these
+
+1. **NEVER store plaintext secrets in git.** No API keys, tokens, passwords, or credentials in source files, `.env` files, config files, or CLI arguments that get committed.
+2. **NEVER pass secrets as CLI flags or environment variables at invocation time.** Secrets must not appear in process argument lists, shell history, or command output visible to agents.
+3. **All secrets live in `~/.mother/secrets.yaml`** (SOPS-encrypted, outside any git repo). This is the single source of truth.
+4. **Secrets are namespaced by service** (`global`, `coder`, `control-plane`, etc.). Global secrets are available to all services. Service-specific secrets are only injected into that service's VMs.
+5. **Injection happens via mounted file.** Before starting a VM, the host decrypts secrets and writes them to a temporary `.env` file, which is mounted read-only into the VM. The VM's `/etc/profile.d/mother-secrets.sh` sources this file on shell login. The temp file is deleted when the VM is cleaned up.
+6. **When adding a new secret:** encrypt it with `cd ~/.mother && sops secrets.yaml`, add it under the appropriate service namespace, save. Never create separate unencrypted secret files.
+
+### How it works
+
+```
+~/.mother/secrets.yaml (SOPS-encrypted, age key at ~/Library/Application Support/sops/age/keys.txt)
+│
+├── global:           # Available to all services
+│   └── SOME_KEY: ENC[...]
+├── coder:            # Injected into coder VMs only
+│   └── GITHUB_TOKEN: ENC[...]
+└── control-plane:    # Injected into control-plane VMs only
+    └── DATABASE_URL: ENC[...]
+```
+
+**Injection flow:**
+1. Service calls `vm.DecryptSecrets("service-name")`
+2. SOPS decrypts `~/.mother/secrets.yaml` in memory
+3. Global + service-specific keys are merged and written to a temp `.env` file
+4. Temp file is mounted read-only into the VM
+5. VM shell profile sources the file → secrets available as env vars inside VM
+6. `vm.Cleanup()` deletes the temp file
+
+### For agents working on mother code
+
+- If a service needs a new secret, add it to `~/.mother/secrets.yaml` under the correct namespace
+- Use `vm.DecryptSecrets("service-name")` and pass the returned path as `vm.Config.SecretsFile`
+- Never log, print, or echo secret values
+- Never pass secrets through `vm.Config.EnvVars` — use `SecretsFile` instead
+
 ## Conventions
 
 - OpenAPI spec (`api/openapi.yaml`) is the source of truth for the HTTP API
