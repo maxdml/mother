@@ -66,21 +66,34 @@ Prerequisites: Go 1.26+, Lima (`limactl`), PostgreSQL (via docker-compose).
 
 ### Control Plane
 
+Before running the control plane, always decrypt and source secrets from SOPS. The `set -a` / `set +a` ensures secrets are exported as environment variables without ever being displayed in plain text:
+
 ```bash
 docker-compose up -d   # Start PostgreSQL
-DATABASE_URL="postgres://mother:mother@localhost:5432/control_plane" ./bin/mother
+
+# Decrypt secrets and export as env vars (never displayed in plain text)
+set -a
+eval "$(sops -d --output-type json ~/.mother/secrets.yaml | jq -r '(.global // {}) * (.["control-plane"] // {}) | to_entries[] | "\(.key)=\(.value)"')"
+set +a
+
+./bin/mother
 ```
 
-Listens on `:8080`. The only required configuration is the `DATABASE_URL` environment variable.
+Listens on `:8080`. All required configuration (including `DATABASE_URL`) comes from `~/.mother/secrets.yaml` under the `global` and `control-plane` namespaces.
 
 #### Running for agents
 
-Agents should start the control plane with output redirected:
+Agents MUST always decrypt and source secrets before starting the control plane. Never hardcode secrets in commands.
 
 ```bash
 mkdir -p /tmp/mother-control-plane
-DATABASE_URL="postgres://mother:mother@localhost:5432/control_plane" \
-  ./bin/mother > /tmp/mother-control-plane/output.log 2>&1 &
+
+# Decrypt secrets and export as env vars (never displayed in plain text)
+set -a
+eval "$(sops -d --output-type json ~/.mother/secrets.yaml | jq -r '(.global // {}) * (.["control-plane"] // {}) | to_entries[] | "\(.key)=\(.value)"')"
+set +a
+
+./bin/mother > /tmp/mother-control-plane/output.log 2>&1 &
 echo $! > /tmp/mother-control-plane/pid
 ```
 
@@ -216,7 +229,7 @@ Mother uses [SOPS](https://github.com/getsops/sops) with [age](https://github.co
 ### Rules — ALL agents MUST follow these
 
 1. **NEVER store plaintext secrets in git.** No API keys, tokens, passwords, or credentials in source files, `.env` files, config files, or CLI arguments that get committed.
-2. **NEVER pass secrets as CLI flags or environment variables at invocation time.** Secrets must not appear in process argument lists, shell history, or command output visible to agents.
+2. **NEVER pass secrets as CLI flags or inline environment variables at invocation time.** Secrets must not appear in process argument lists, shell history, or command output visible to agents. Always decrypt with SOPS and source using `set -a` / `set +a` so values are never displayed.
 3. **All secrets live in `~/.mother/secrets.yaml`** (SOPS-encrypted, outside any git repo). This is the single source of truth.
 4. **Secrets are namespaced by service** (`global`, `coder`, `control-plane`, etc.). Global secrets are available to all services. Service-specific secrets are only injected into that service's VMs.
 5. **Injection happens via mounted file.** Before starting a VM, the host decrypts secrets and writes them to a temporary `.env` file, which is mounted read-only into the VM. The VM's `/etc/profile.d/mother-secrets.sh` sources this file on shell login. The temp file is deleted when the VM is cleaned up.
