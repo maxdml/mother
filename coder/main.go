@@ -18,6 +18,13 @@ func (e *envFlag) Set(val string) error {
 }
 
 func main() {
+	os.Exit(run())
+}
+
+// run contains the main logic and returns an exit code.
+// Extracted from main() so that deferred cleanup (e.g. VM deletion) runs
+// before os.Exit — os.Exit skips defers.
+func run() int {
 	var (
 		envVars      envFlag
 		printPrompt  string
@@ -64,19 +71,19 @@ func main() {
 
 	if rawProjectDir == "" {
 		flag.Usage()
-		os.Exit(1)
+		return 1
 	}
 
 	projectDir, err := filepath.Abs(rawProjectDir)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error resolving project dir: %v\n", err)
-		os.Exit(1)
+		return 1
 	}
 
 	info, err := os.Stat(projectDir)
 	if err != nil || !info.IsDir() {
 		fmt.Fprintf(os.Stderr, "Error: %s is not a valid directory\n", projectDir)
-		os.Exit(1)
+		return 1
 	}
 
 	// Load .env from project dir
@@ -103,7 +110,7 @@ func main() {
 			data, err := os.ReadFile(promptFile)
 			if err != nil {
 				fmt.Fprintf(os.Stderr, "Error reading prompt file: %v\n", err)
-				os.Exit(1)
+				return 1
 			}
 			parts = append(parts, string(data))
 		}
@@ -114,7 +121,7 @@ func main() {
 	homeDir, err := os.UserHomeDir()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error resolving home dir: %v\n", err)
-		os.Exit(1)
+		return 1
 	}
 	claudeDir := filepath.Join(homeDir, ".claude")
 
@@ -124,7 +131,7 @@ func main() {
 	coderTmpDir := filepath.Join(claudeDir, ".coder-tmp")
 	if err := os.MkdirAll(coderTmpDir, 0700); err != nil {
 		fmt.Fprintf(os.Stderr, "Error creating temp dir: %v\n", err)
-		os.Exit(1)
+		return 1
 	}
 	stagedClaudeJSON := filepath.Join(coderTmpDir, "claude.json")
 	if data, err := os.ReadFile(filepath.Join(homeDir, ".claude.json")); err == nil {
@@ -135,7 +142,7 @@ func main() {
 	instance, err := Start(projectDir, claudeDir, homeDir, envMap)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error starting VM: %v\n", err)
-		os.Exit(1)
+		return 1
 	}
 
 	setupCleanup(instance)
@@ -167,8 +174,10 @@ func main() {
 
 	if runErr != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", runErr)
-		os.Exit(1)
+		return 1
 	}
+
+	return 0
 }
 
 // loadDotEnv parses a simple KEY=VAL .env file. Blank lines and # comments are skipped.

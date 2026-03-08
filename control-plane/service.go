@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"context"
 	"os/exec"
+	"syscall"
+	"time"
 
 	"mother/control-plane/api"
 
@@ -20,6 +22,13 @@ type RealExecutor struct{}
 
 func (e *RealExecutor) Execute(ctx context.Context, name string, args []string, env []string) (string, string, error) {
 	cmd := exec.CommandContext(ctx, name, args...)
+	// Send SIGTERM on context cancellation so the child process can clean up
+	// (e.g. coder deletes its Lima VM). Go's default is SIGKILL which can't be caught.
+	cmd.Cancel = func() error {
+		return cmd.Process.Signal(syscall.SIGTERM)
+	}
+	// Give the child 30s to clean up after SIGTERM before Go kills it.
+	cmd.WaitDelay = 30 * time.Second
 	if len(env) > 0 {
 		cmd.Env = env
 	}

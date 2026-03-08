@@ -67,11 +67,11 @@ Agents should start the control plane with output redirected to a known location
 ```bash
 mkdir -p /tmp/mother-control-plane
 DATABASE_URL="postgres://mother:mother@localhost:5432/control_plane" \
-  ./control-plane > /tmp/mother-control-plane/stdout.log 2> /tmp/mother-control-plane/stderr.log &
+  ./control-plane > /tmp/mother-control-plane/output.log 2>&1 &
 echo $! > /tmp/mother-control-plane/pid
 ```
 
-- **Logs**: `/tmp/mother-control-plane/stdout.log`, `/tmp/mother-control-plane/stderr.log`
+- **Log**: `/tmp/mother-control-plane/output.log`
 - **PID file**: `/tmp/mother-control-plane/pid`
 
 To check if the control plane is already running:
