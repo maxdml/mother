@@ -1,7 +1,6 @@
 package main
 
 import (
-	"context"
 	"encoding/json"
 	"log"
 	"net/http"
@@ -13,8 +12,7 @@ import (
 
 // Handler implements the generated api.ServerInterface.
 type Handler struct {
-	Store   *JobStore
-	Service *CoderService
+	Jobs JobManager
 }
 
 var _ api.ServerInterface = (*Handler)(nil)
@@ -44,40 +42,28 @@ func (h *Handler) CreateJob(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	id := h.Store.Create(string(req.Service), req.Params)
-
-	// Run the job asynchronously.
-	go h.runJob(id, req.Params)
+	id, err := h.Jobs.StartJob(r.Context(), string(req.Service), req.Params)
+	if err != nil {
+		log.Printf("failed to start job: %v", err)
+		writeJSON(w, http.StatusInternalServerError, api.ErrorResponse{Error: "failed to start job"})
+		return
+	}
 
 	writeJSON(w, http.StatusAccepted, api.CreateJobResponse{Id: id})
 }
 
 func (h *Handler) GetJob(w http.ResponseWriter, r *http.Request, id openapi_types.UUID) {
-	job := h.Store.Get(id)
+	job, err := h.Jobs.GetJob(r.Context(), id)
+	if err != nil {
+		log.Printf("failed to get job %s: %v", id, err)
+		writeJSON(w, http.StatusInternalServerError, api.ErrorResponse{Error: "internal error"})
+		return
+	}
 	if job == nil {
 		writeJSON(w, http.StatusNotFound, api.ErrorResponse{Error: "job not found"})
 		return
 	}
 	writeJSON(w, http.StatusOK, job)
-}
-
-func (h *Handler) runJob(id openapi_types.UUID, params api.CoderParams) {
-	if err := h.Store.SetRunning(id); err != nil {
-		log.Printf("failed to set job %s to running: %v", id, err)
-		return
-	}
-
-	result, err := h.Service.Run(context.Background(), id, params)
-	if err != nil {
-		if setErr := h.Store.SetFailed(id, err.Error()); setErr != nil {
-			log.Printf("failed to set job %s to failed: %v", id, setErr)
-		}
-		return
-	}
-
-	if err := h.Store.SetCompleted(id, result); err != nil {
-		log.Printf("failed to set job %s to completed: %v", id, err)
-	}
 }
 
 func writeJSON(w http.ResponseWriter, status int, v any) {

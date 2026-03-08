@@ -6,17 +6,80 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"sync"
 	"testing"
 	"time"
 
 	"mother/control-plane/api"
+
+	openapi_types "github.com/oapi-codegen/runtime/types"
 )
+
+// mockJobManager is a test implementation of JobManager that runs jobs
+// asynchronously using a CoderService, mirroring production behavior.
+type mockJobManager struct {
+	mu   sync.Mutex
+	jobs map[string]*api.Job
+	svc  *CoderService
+}
+
+func newMockJobManager(svc *CoderService) *mockJobManager {
+	return &mockJobManager{
+		jobs: make(map[string]*api.Job),
+		svc:  svc,
+	}
+}
+
+func (m *mockJobManager) StartJob(ctx context.Context, service string, params api.CoderParams) (openapi_types.UUID, error) {
+	id := openapi_types.UUID(newUUID())
+	now := time.Now().UTC()
+	job := &api.Job{
+		Id:        id,
+		Service:   service,
+		Status:    api.Running,
+		CreatedAt: now,
+	}
+
+	m.mu.Lock()
+	m.jobs[id.String()] = job
+	m.mu.Unlock()
+
+	go func() {
+		result, err := m.svc.Run(context.Background(), id, params)
+		m.mu.Lock()
+		defer m.mu.Unlock()
+		now := time.Now().UTC()
+		if err != nil {
+			job.Status = api.Failed
+			errStr := err.Error()
+			job.Error = &errStr
+			job.CompletedAt = &now
+		} else {
+			job.Status = api.Completed
+			job.Result = &result
+			job.CompletedAt = &now
+		}
+	}()
+
+	return id, nil
+}
+
+func (m *mockJobManager) GetJob(ctx context.Context, id openapi_types.UUID) (*api.Job, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	job, ok := m.jobs[id.String()]
+	if !ok {
+		return nil, nil
+	}
+	cp := *job
+	return &cp, nil
+}
 
 func newTestHandler() (*Handler, *MockExecutor) {
 	mock := &MockExecutor{Stdout: "ok"}
-	store := NewJobStore()
 	svc := &CoderService{BinaryPath: "/bin/coder", Executor: mock}
-	h := &Handler{Store: store, Service: svc}
+	jobs := newMockJobManager(svc)
+	h := &Handler{Jobs: jobs}
 	return h, mock
 }
 

@@ -45,7 +45,7 @@ provision:
       #!/bin/bash
       set -eux
       curl -fsSL https://deb.nodesource.com/setup_lts.x | bash -
-      apt-get install -y nodejs
+      apt-get install -y nodejs tmux
       npm install -g @anthropic-ai/claude-code
   - mode: user
     script: |
@@ -145,39 +145,49 @@ func RunClaude(instance, projectDir, homeDir, prompt, systemPrompt, model string
 	}
 	defer os.RemoveAll(tmpDir)
 
-	// Build a shell script that claude will run.
-	var script strings.Builder
-	script.WriteString("#!/bin/bash\nset -e\nclaude --dangerously-skip-permissions")
+	// Build the claude command line.
+	var claudeCmd strings.Builder
+	claudeCmd.WriteString("claude --dangerously-skip-permissions")
 
 	fullSystemPrompt := BuildSystemPrompt(systemPrompt)
 	spFile := filepath.Join(tmpDir, "system-prompt.txt")
 	if err := os.WriteFile(spFile, []byte(fullSystemPrompt), 0600); err != nil {
 		return "", fmt.Errorf("writing system prompt: %w", err)
 	}
-	script.WriteString(fmt.Sprintf(` --append-system-prompt "$(cat '%s')"`, spFile))
+	claudeCmd.WriteString(fmt.Sprintf(` --append-system-prompt "$(cat '%s')"`, spFile))
 	if model != "" {
-		script.WriteString(" --model " + model)
+		claudeCmd.WriteString(" --model " + model)
 	}
 	if prompt != "" {
 		pFile := filepath.Join(tmpDir, "prompt.txt")
 		if err := os.WriteFile(pFile, []byte(prompt), 0600); err != nil {
 			return "", fmt.Errorf("writing prompt: %w", err)
 		}
-		script.WriteString(fmt.Sprintf(` -p "$(cat '%s')"`, pFile))
+		claudeCmd.WriteString(fmt.Sprintf(` -p "$(cat '%s')"`, pFile))
 	}
-	script.WriteString("\n")
+
+	// Wrap in a tmux session so the user can attach and monitor.
+	// Output is tee'd to a log file; tmux wait-for synchronizes completion.
+	outputLog := filepath.Join(tmpDir, "output.log")
+	var script strings.Builder
+	script.WriteString("#!/bin/bash\nset -e\n")
+	script.WriteString(fmt.Sprintf(
+		"tmux new-session -d -s coder -x 220 -y 50 "+
+			"'%s 2>&1 | tee %s; tmux wait-for -S coder-done'\n",
+		claudeCmd.String(), outputLog))
+	script.WriteString("tmux wait-for coder-done\n")
+	script.WriteString(fmt.Sprintf("cat %s\n", outputLog))
 
 	scriptFile := filepath.Join(tmpDir, "run.sh")
 	if err := os.WriteFile(scriptFile, []byte(script.String()), 0700); err != nil {
 		return "", fmt.Errorf("writing run script: %w", err)
 	}
 
+	fmt.Fprintf(os.Stderr, "\n  To monitor the session:\n  limactl shell %s tmux attach -t coder\n\n", instance)
+
 	args := []string{"shell", "--workdir", projectDir, instance, "bash", scriptFile}
 
 	cmd := exec.Command("limactl", args...)
-	if prompt == "" {
-		cmd.Stdin = os.Stdin // interactive mode needs terminal input
-	}
 
 	var output bytes.Buffer
 	cmd.Stdout = io.MultiWriter(os.Stdout, &output)
