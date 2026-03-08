@@ -1,0 +1,9 @@
+services:
+  gtm-platform:
+    build:
+      context: ./gtm-platform
+      dockerfile: Dockerfile
+    ports:
+      - "0.0.0.0:8000:8000"
+    volumes:
+      - ${GTM_SECRETS_FILE:-/dev/null}:/app/.env:ro
