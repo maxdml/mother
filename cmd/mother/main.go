@@ -17,9 +17,9 @@ import (
 const listenAddr = ":8080"
 
 func main() {
-	databaseURL := os.Getenv("DATABASE_URL")
+	databaseURL := os.Getenv("DBOS_DATABASE_URL")
 	if databaseURL == "" {
-		log.Fatal("DATABASE_URL environment variable is required")
+		log.Fatal("DBOS_DATABASE_URL environment variable is required")
 	}
 
 	// Initialize coder engine (replaces subprocess execution)
