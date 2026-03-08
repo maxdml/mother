@@ -1,0 +1,14 @@
+services:
+  postgres:
+    image: postgres:18
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_USER: mother
+      POSTGRES_PASSWORD: mother
+      POSTGRES_DB: control_plane
+    volumes:
+      - pgdata:/var/lib/postgresql
+
+volumes:
+  pgdata:

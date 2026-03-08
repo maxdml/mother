@@ -4,6 +4,9 @@
 *.dll
 *.so
 *.dylib
+bin/
+
+# Old binary locations (keep until cleanup)
 coder/coder
 control-plane/control-plane
 
